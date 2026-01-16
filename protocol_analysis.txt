@@ -1,0 +1,4 @@
+Protocol Analysis Results
+Total packets: 621
+Login packets: 20
+Command packets: 321
