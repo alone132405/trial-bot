@@ -1,307 +1,173 @@
 """
-Lords Mobile Bot - Frida Hook Script
-Captures the access_key when the bot decrypts acc.json
-
-Run this BEFORE starting the bot, or attach to running bot.
-Requires: pip install frida frida-tools
-Run as Administrator!
+Lords Mobile Bot - Frida Hook Script v2
+Fixed API compatibility issues
 """
 
 import frida
 import sys
 import json
 import time
-import os
 
-# Frida JavaScript to inject into the bot
+# Fixed Frida JavaScript
 HOOK_SCRIPT = """
 'use strict';
 
-// Log function
-function log(msg) {
-    send({type: 'log', data: msg});
-}
+send({type: 'log', data: '[*] Frida script loaded!'});
 
-log('[*] Frida script loaded!');
-log('[*] Searching for .NET runtime...');
-
-// Hook .NET CLR methods
-try {
-    // Try to find the CLR
-    var clr = Module.findBaseAddress('clr.dll') || Module.findBaseAddress('coreclr.dll');
+// Hook network send
+var sendPtr = Module.getExportByName('ws2_32.dll', 'send');
+if (sendPtr) {
+    send({type: 'log', data: '[+] Found send() at ' + sendPtr});
     
-    if (clr) {
-        log('[+] Found CLR at: ' + clr);
-    } else {
-        log('[!] CLR not found - bot may use different runtime');
-    }
-} catch (e) {
-    log('[!] Error finding CLR: ' + e);
-}
-
-// Hook common crypto functions
-var cryptFunctions = [
-    'CryptDecrypt',
-    'CryptEncrypt', 
-    'BCryptDecrypt',
-    'BCryptEncrypt',
-];
-
-cryptFunctions.forEach(function(funcName) {
-    try {
-        var func = Module.findExportByName('advapi32.dll', funcName) ||
-                   Module.findExportByName('bcrypt.dll', funcName) ||
-                   Module.findExportByName('ncrypt.dll', funcName);
-        
-        if (func) {
-            log('[+] Found ' + funcName + ' at: ' + func);
-            
-            Interceptor.attach(func, {
-                onEnter: function(args) {
-                    this.funcName = funcName;
-                    log('[>] ' + funcName + ' called');
-                },
-                onLeave: function(retval) {
-                    log('[<] ' + this.funcName + ' returned');
-                }
-            });
-        }
-    } catch (e) {
-        // Function not found, skip
-    }
-});
-
-// Hook file operations to see when acc.json is read
-try {
-    var CreateFileW = Module.findExportByName('kernel32.dll', 'CreateFileW');
-    if (CreateFileW) {
-        log('[+] Hooking CreateFileW');
-        
-        Interceptor.attach(CreateFileW, {
-            onEnter: function(args) {
-                var filename = args[0].readUtf16String();
-                if (filename && filename.indexOf('acc.json') !== -1) {
-                    log('[!] acc.json accessed: ' + filename);
-                }
-            }
-        });
-    }
-} catch (e) {
-    log('[!] Error hooking CreateFileW: ' + e);
-}
-
-// Hook ReadFile to capture acc.json content being read
-try {
-    var ReadFile = Module.findExportByName('kernel32.dll', 'ReadFile');
-    if (ReadFile) {
-        Interceptor.attach(ReadFile, {
-            onEnter: function(args) {
-                this.buffer = args[1];
-                this.bytesToRead = args[2].toInt32();
-            },
-            onLeave: function(retval) {
-                if (this.bytesToRead > 100) {
-                    try {
-                        var data = this.buffer.readUtf8String(Math.min(200, this.bytesToRead));
-                        if (data && (data.indexOf('access') !== -1 || data.indexOf('igg') !== -1)) {
-                            log('[!] Potential credential data read: ' + data.substring(0, 100));
-                        }
-                    } catch (e) {}
-                }
-            }
-        });
-    }
-} catch (e) {
-    log('[!] Error hooking ReadFile: ' + e);
-}
-
-// Hook network send to capture outgoing data
-try {
-    var send_func = Module.findExportByName('ws2_32.dll', 'send');
-    if (send_func) {
-        log('[+] Hooking network send()');
-        
-        Interceptor.attach(send_func, {
-            onEnter: function(args) {
-                var size = args[2].toInt32();
-                if (size > 10 && size < 10000) {
-                    try {
-                        var data = args[1].readUtf8String(Math.min(size, 500));
-                        if (data) {
-                            log('[NET] Sending: ' + data.substring(0, 200));
-                            
-                            // Look for credentials
-                            if (data.indexOf('access') !== -1 || 
-                                data.indexOf('token') !== -1 ||
-                                data.indexOf('igg_id') !== -1) {
-                                log('[!!!] CREDENTIALS FOUND IN NETWORK DATA!');
-                                send({type: 'credentials', data: data});
-                            }
-                        }
-                    } catch (e) {}
-                }
-            }
-        });
-    }
-} catch (e) {
-    log('[!] Error hooking send: ' + e);
-}
-
-// Hook SSL/TLS write for HTTPS traffic
-try {
-    var secur32 = Module.findBaseAddress('secur32.dll');
-    var schannel = Module.findBaseAddress('schannel.dll');
-    
-    // EncryptMessage is used for SSL/TLS
-    var EncryptMessage = Module.findExportByName('secur32.dll', 'EncryptMessage');
-    if (EncryptMessage) {
-        log('[+] Hooking EncryptMessage (SSL traffic)');
-        
-        Interceptor.attach(EncryptMessage, {
-            onEnter: function(args) {
-                // args[1] contains the message buffers before encryption
+    Interceptor.attach(sendPtr, {
+        onEnter: function(args) {
+            var size = args[2].toInt32();
+            if (size > 10 && size < 5000) {
                 try {
-                    var pMessage = args[1];
-                    // SecBufferDesc structure
-                    var cBuffers = pMessage.add(4).readU32();
-                    var pBuffers = pMessage.add(8).readPointer();
-                    
-                    for (var i = 0; i < cBuffers; i++) {
-                        var bufferPtr = pBuffers.add(i * 16);
-                        var cbBuffer = bufferPtr.readU32();
-                        var bufferType = bufferPtr.add(4).readU32();
-                        var pvBuffer = bufferPtr.add(8).readPointer();
-                        
-                        if (bufferType === 1 && cbBuffer > 0 && cbBuffer < 5000) {
-                            try {
-                                var data = pvBuffer.readUtf8String(Math.min(cbBuffer, 500));
-                                if (data && data.length > 10) {
-                                    log('[SSL] Pre-encrypt: ' + data.substring(0, 200));
-                                    
-                                    if (data.indexOf('access') !== -1 || 
-                                        data.indexOf('key') !== -1 ||
-                                        data.indexOf('igg') !== -1 ||
-                                        data.indexOf('device') !== -1) {
-                                        log('[!!!] CREDENTIALS IN SSL DATA!');
-                                        send({type: 'credentials', data: data});
-                                    }
-                                }
-                            } catch (e) {}
+                    var data = args[1].readCString(size);
+                    if (data && data.length > 5) {
+                        send({type: 'log', data: '[NET] ' + data.substring(0, 150)});
+                        if (data.indexOf('access') > -1 || data.indexOf('igg') > -1 || data.indexOf('key') > -1) {
+                            send({type: 'cred', data: data});
                         }
                     }
-                } catch (e) {}
+                } catch(e) {}
+            }
+        }
+    });
+}
+
+// Hook WSASend (alternative network function)
+var wsaSendPtr = Module.getExportByName('ws2_32.dll', 'WSASend');
+if (wsaSendPtr) {
+    send({type: 'log', data: '[+] Found WSASend()'});
+}
+
+// Hook file read
+var readFilePtr = Module.getExportByName('kernel32.dll', 'ReadFile');
+if (readFilePtr) {
+    send({type: 'log', data: '[+] Found ReadFile()'});
+    
+    Interceptor.attach(readFilePtr, {
+        onLeave: function(retval) {
+            // Check return value
+        }
+    });
+}
+
+// Hook CreateFileW to detect acc.json access
+var createFilePtr = Module.getExportByName('kernel32.dll', 'CreateFileW');
+if (createFilePtr) {
+    send({type: 'log', data: '[+] Hooking CreateFileW'});
+    
+    Interceptor.attach(createFilePtr, {
+        onEnter: function(args) {
+            try {
+                var fname = args[0].readUtf16String();
+                if (fname && fname.indexOf('acc.json') > -1) {
+                    send({type: 'log', data: '[FILE] acc.json accessed!'});
+                }
+                if (fname && fname.indexOf('settings') > -1) {
+                    send({type: 'log', data: '[FILE] ' + fname});
+                }
+            } catch(e) {}
+        }
+    });
+}
+
+// Hook SSL encrypt (schannel)
+var encryptPtr = Module.getExportByName('secur32.dll', 'EncryptMessage');
+if (encryptPtr) {
+    send({type: 'log', data: '[+] Found EncryptMessage (SSL)'});
+}
+
+// Monitor fish.dll if loaded
+setTimeout(function() {
+    var fishBase = Module.findBaseAddress('fish.dll');
+    if (fishBase) {
+        send({type: 'log', data: '[+] fish.dll found at ' + fishBase});
+        
+        // List exports
+        var exports = Module.enumerateExports('fish.dll');
+        exports.forEach(function(exp) {
+            send({type: 'log', data: '[fish.dll] ' + exp.type + ': ' + exp.name});
+            
+            // Hook the exports
+            if (exp.type === 'function') {
+                try {
+                    Interceptor.attach(exp.address, {
+                        onEnter: function(args) {
+                            send({type: 'log', data: '[fish] ' + exp.name + ' called'});
+                        }
+                    });
+                } catch(e) {}
             }
         });
+    } else {
+        send({type: 'log', data: '[!] fish.dll not loaded yet'});
     }
-} catch (e) {
-    log('[!] Error hooking EncryptMessage: ' + e);
-}
+}, 2000);
 
-log('[*] All hooks installed. Wait for bot to connect...');
+send({type: 'log', data: '[*] Hooks installed. Waiting for activity...'});
 """
 
-# Captured credentials storage
-captured = {
-    "logs": [],
-    "credentials": []
-}
+captured = {"logs": [], "credentials": []}
 
 def on_message(message, data):
-    """Callback for Frida messages"""
     if message['type'] == 'send':
         payload = message['payload']
+        msg_type = payload.get('type', '')
+        msg_data = payload.get('data', '')
         
-        if payload['type'] == 'log':
-            print(payload['data'])
-            captured['logs'].append(payload['data'])
+        print(msg_data)
+        captured['logs'].append(msg_data)
+        
+        if msg_type == 'cred':
+            print("\n" + "!"*50)
+            print("CREDENTIALS FOUND!")
+            print("!"*50)
+            print(msg_data[:500])
+            print("!"*50 + "\n")
+            captured['credentials'].append(msg_data)
             
-        elif payload['type'] == 'credentials':
-            print("\n" + "=" * 60)
-            print("!!! CREDENTIALS CAPTURED !!!")
-            print("=" * 60)
-            print(payload['data'])
-            print("=" * 60 + "\n")
-            captured['credentials'].append(payload['data'])
-            
-            # Save immediately
             with open('captured_credentials.json', 'w') as f:
                 json.dump(captured, f, indent=2)
-            print("Saved to captured_credentials.json")
-            
+                
     elif message['type'] == 'error':
-        print(f"[ERROR] {message['stack']}")
+        print(f"[ERR] {message.get('stack', message)}")
 
-def attach_to_bot():
-    """Attach Frida to running LordsMobileBot.exe"""
-    print("=" * 60)
-    print(" Lords Mobile Bot - Credential Capture")
-    print("=" * 60)
-    print("\nLooking for LordsMobileBot.exe...")
+def main():
+    print("="*50)
+    print(" Frida Hook v2 - Lords Mobile Bot")
+    print("="*50)
     
     try:
-        # Try to attach to running process
+        print("\n[*] Attaching to LordsMobileBot.exe...")
         session = frida.attach("LordsMobileBot.exe")
-        print("[+] Attached to LordsMobileBot.exe!")
+        print("[+] Attached!")
         
-        print("[*] Injecting hooks...")
         script = session.create_script(HOOK_SCRIPT)
         script.on('message', on_message)
         script.load()
         
-        print("\n[*] Hooks active! Now connect an account in the bot.")
-        print("[*] Press Ctrl+C to stop and see captured data.\n")
+        print("\n[*] Now START the account in the bot!")
+        print("[*] Press Ctrl+C to stop\n")
         
-        # Keep running
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\n[*] Stopping...")
+        while True:
+            time.sleep(1)
             
-        session.detach()
-        
     except frida.ProcessNotFoundError:
-        print("[!] LordsMobileBot.exe is not running!")
-        print("[!] Please start the bot first, then run this script.")
-        return False
-        
-    except frida.PermissionDeniedError:
-        print("[!] Permission denied!")
-        print("[!] Run this script as Administrator.")
-        return False
-        
+        print("[!] LordsMobileBot.exe not running!")
+        print("[!] Start the bot first!")
+    except KeyboardInterrupt:
+        print("\n[*] Stopped")
     except Exception as e:
         print(f"[!] Error: {e}")
-        return False
     
-    return True
-
-def main():
-    print("\nInstructions:")
-    print("1. Start LordsMobileBot.exe (don't connect account yet)")
-    print("2. Run this script as Administrator")
-    print("3. Connect an account in the bot")
-    print("4. Watch for captured credentials\n")
-    
-    result = attach_to_bot()
-    
-    print("\n" + "=" * 60)
-    print("Results:")
-    print("=" * 60)
-    
-    if captured['credentials']:
-        print(f"\n[+] Captured {len(captured['credentials'])} credential entries!")
-        for i, cred in enumerate(captured['credentials']):
-            print(f"\n--- Entry {i+1} ---")
-            print(cred[:500])
-    else:
-        print("\n[-] No credentials captured.")
-        print("    The bot may not have connected or uses different methods.")
-    
-    # Save all results
     with open('captured_credentials.json', 'w') as f:
         json.dump(captured, f, indent=2)
-    print("\nAll logs saved to captured_credentials.json")
+    print(f"\nCaptured {len(captured['credentials'])} credentials")
+    print("Saved to captured_credentials.json")
 
 if __name__ == "__main__":
     main()
