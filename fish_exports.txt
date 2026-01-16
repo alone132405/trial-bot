@@ -1,0 +1,109 @@
+fish.dll Export Analysis
+==================================================
+
+Architecture: x64
+Sections: 8
+
+Exported Functions: 3
+
+[   1] magnify
+[   2] sprite_ctx_b
+[   3] sprite_ctx_s
+
+
+Imported DLLs:
+
+KERNEL32.dll:
+  - GlobalAlloc
+  - GlobalUnlock
+  - GlobalLock
+  - GlobalFree
+  - DisableThreadLibraryCalls
+  - GetSystemTimeAsFileTime
+  - GetCurrentThreadId
+  - GetCurrentProcessId
+  - QueryPerformanceCounter
+  - IsDebuggerPresent
+  ... +9 more
+
+ole32.dll:
+  - CoUninitialize
+  - CreateStreamOnHGlobal
+  - CoCreateInstance
+  - CoInitialize
+
+MSVCP140.dll:
+  - ??1?$basic_ostream@DU?$char_traits@D@std@@@std@@UEAA@XZ
+  - ?_Osfx@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAXXZ
+  - ?flush@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@XZ
+  - ?_Lock@?$basic_streambuf@DU?$char_traits@D@std@@@std@@UEAAXXZ
+  - ?_Unlock@?$basic_streambuf@DU?$char_traits@D@std@@@std@@UEAAXXZ
+  - ?imbue@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAAXAEBVlocale@2@@Z
+  - ?setbuf@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAAPEAV12@PEAD_J@Z
+  - ?showmanyc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAA_JXZ
+  - ?sync@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAAHXZ
+  - ?uflow@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAAHXZ
+  ... +25 more
+
+VCRUNTIME140.dll:
+  - memcmp
+  - _CxxThrowException
+  - __std_exception_destroy
+  - memmove
+  - __std_type_info_destroy_list
+  - memset
+  - memcpy
+  - __CxxFrameHandler3
+  - __std_terminate
+  - __std_exception_copy
+  ... +1 more
+
+api-ms-win-crt-runtime-l1-1-0.dll:
+  - _initterm_e
+  - _invalid_parameter_noinfo_noreturn
+  - _seh_filter_dll
+  - _crt_atexit
+  - _initterm
+  - _execute_onexit_table
+  - _register_onexit_function
+  - _initialize_onexit_table
+  - _errno
+  - _initialize_narrow_environment
+  ... +2 more
+
+api-ms-win-crt-stdio-l1-1-0.dll:
+  - __stdio_common_vsprintf
+
+api-ms-win-crt-heap-l1-1-0.dll:
+  - malloc
+  - free
+  - _callnewh
+  - calloc
+
+api-ms-win-crt-convert-l1-1-0.dll:
+  - strtoull
+  - strtoll
+  - strtod
+
+api-ms-win-crt-math-l1-1-0.dll:
+  - _dtest
+
+api-ms-win-crt-locale-l1-1-0.dll:
+  - localeconv
+
+KERNEL32.dll:
+  - LocalAlloc
+  - LocalFree
+  - GetModuleFileNameW
+  - GetProcessAffinityMask
+  - SetProcessAffinityMask
+  - SetThreadAffinityMask
+  - Sleep
+  - ExitProcess
+  - FreeLibrary
+  - LoadLibraryA
+  ... +2 more
+
+USER32.dll:
+  - GetProcessWindowStation
+  - GetUserObjectInformationW
