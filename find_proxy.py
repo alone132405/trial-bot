@@ -13,7 +13,8 @@ setTimeout(function() {
     
     // Method 1: Hook connect in ws2_32.dll
     try {
-        var connectAddr = Module.findExportByName('ws2_32.dll', 'connect');
+        var ws2 = Process.getModuleByName('ws2_32.dll');
+        var connectAddr = ws2.getExportByName('connect');
         if (connectAddr) {
             Interceptor.attach(connectAddr, {
                 onEnter: function(args) {
